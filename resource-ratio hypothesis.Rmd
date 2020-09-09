@@ -1,0 +1,221 @@
+---
+title: "Modelling competition with Resource-ratio hypothesis"
+author: "Dony Indiarto"
+date: "09/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(deSolve)
+library(tidyr)
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+
+## 1. Basic growth model
+
+Let's begin with a single species population model:
+
+$$ \frac{1}{N} \frac{dN}{dt} = r +sN $$
+
+and when we have multiple species it becomes:
+
+$$ \frac{1}{N} \frac{dN}{dt} = r_i + \sum _js_{i,j} N_{j} $$
+
+### Variable description
+
+$r$ = intrinsic rate of natural increase
+
+$s$ = represent interactions among organisms
+
+$N$ = abundance (e.g. number of individuals)
+
+
+## 2. Competition
+
+ 1. Competition among two species occurs when the interaction terms $s_{1,2}$ and $s_{2,1}$ are both negative. We can expand $s$ so we can take into account competition for resource in the environment.  
+ 
+ 2. Grime says plants have 'strategies': competitors, stress tolerators, or ruderals. However, competition is most intense in resource rich environments.
+
+ 3. Competition is important everywhere, species differ in ability to acquire different resources (Tilman, 1994)
+ 
+
+## 3. The R* rule
+
+R* rule is a hypothesis in community ecology that attempts to model plant interaction in a resource-limited environment (Tilman, 1994). If multiple species are competing for a single limiting resource, then whichever species can survive at the lowest equilibrium resource level can outcompete all other species. The model described below assume that resources are released immediately upon death of an organism.
+
+The intrinsic growth rate is defined as:
+
+$$r = m (R -R^{*}) $$
+
+and the interaction term is defined as:
+
+$$ s = -u m$$
+ 
+The amount of resource remaining at any time will be:
+$$ R =R_{max} - \sum^h_{i=1}u_iNi$$
+
+### Variable description
+
+$R$  =  is the amount of limiting resource available in the environment, the amount of excess resource is expressed as: $R-R^{*}$
+
+$R^{*}$ = is the minimum resource required for a species to maintain itself
+
+$R_{max}$ = is the maximum amount of resource available in the environment, in absence of any organisms
+
+$u$  = the amount of resource used by each living organism in the population
+
+$uN$ = the amount of resource tied up in the population at time $t$
+
+$m$ = tells how the individual growth rate, $(1/N) dN/dt$, depends on the amount of resource used by each living organism in the population.
+
+$N$ = measures the size of the population at time $t$
+
+## 4. The succession model
+
+### 4a. Variables
+```{r warning=FALSE}
+# Initial population number for each species
+pop <- c(N1 = 0.000001, 
+              N2 = 0.000010,
+              N3 = 0.000100,
+              N4 = 0.001000,
+              N5 = 0.01000)
+```
+
+### 4b. Parameters
+```{r warning=FALSE}
+params <- c(Rmax = 7,
+            R1star = 1,
+            R2star = 2,
+            R3star = 3,
+            R4star = 4,
+            R5star = 5,
+            m1 = 0.171468,
+            m2 = 0.308642,
+            m3 = 0.555556,
+            m4 = 1,
+            m5 = 1.8,
+            u1 = 0.001,
+            u2 = 0.001,
+            u3 = 0.001,
+            u4 = 0.001,
+            u5 = 0.001)
+```
+
+### 4c. Timestep
+
+```{r warning = FALSE}
+t <- seq(0,100, by = (1/10)) # advance a small time step
+```
+
+### 4d. Equations
+```{r warning = FALSE}
+simulate_succession <- function(t, pop, params) {
+  with(as.list(c(pop, params)), {
+    R = Rmax - (u1*N1) - (u2*N2) - (u3*N3) - (u4*N4) - (u5*N5) # compute remaining resources
+    
+    dN1 = m1 * (R - R1star) * N1 # estimate the change in the population of each species
+    
+    dN2 = m2 * (R - R2star) * N2
+    
+    dN3 = m3 * (R - R3star) * N3
+    
+    dN4 = m4 * (R - R4star) * N4
+    
+    dN5 = m5 * (R - R5star) * N5
+    
+   # cat("Time = ", t, "R = ", R, "\n")
+    return(list(c(dN1, dN2, dN3, dN4, dN5), # population number
+                R = R, 
+                pcg1 = dN1/N1,  # percapita growth rate
+                pcg2 = dN2/N2,
+                pcg3 = dN3/N3,
+                pcg4 = dN4/N4,
+                pcg5 = dN5/N5))
+  
+  })
+}
+
+```
+
+
+### 4e. ODE function
+```{r}
+succession_solution <-
+  ode(
+    y = pop,
+    times = t,
+    func = simulate_succession,
+    parms = params,
+    method = "rk4") %>% 
+  as.data.frame()
+
+```
+
+## 5. Visualisation
+
+### Multi-species individual growth rate versus resource-level
+
+```{r}
+
+# select per-capita growth rate
+sucession_solution_long_percapita <- succession_solution %>%
+  select(R, pcg1, pcg2, pcg3, pcg4, pcg5) %>%
+  gather("pop", "rate",-R)
+
+# create a 'percapita growth rate vs resource level' plot
+pcgrowth_vs_resource <-
+  ggplot(sucession_solution_long_percapita,
+         aes(x = R, y = rate, color = pop)) +
+  geom_line(show.legend = F) + theme_bw() +
+  scale_color_brewer(palette = "Set1") +
+  labs(y = expression(frac(1, N) * frac(dN, dt)), 
+       x = "Resource level R")
+```
+
+
+### Succession based on the tradeoffs of the figure
+
+```{r warning = FALSE}
+# Number of population across time
+sucession_solution_long <- succession_solution %>%
+  select(!c(pcg1, pcg2, pcg3, pcg4, pcg5)) %>%
+  gather("pop", "number",-time)
+
+succession_plot <- sucession_solution_long %>%
+  dplyr::filter(pop != "R") %>%
+  ggplot(aes(x = time, y = number, color = pop)) +
+  geom_line(alpha = 0.7) +
+  scale_color_brewer(palette = "Set1", name = "Population")
+
+succession_plot_resource <- succession_plot +
+  geom_line(
+    data = sucession_solution_long %>% dplyr::filter(pop == "R") ,
+    aes(x = time, y = number * 7000 / 6),
+    color = "darkgrey",
+    linetype = "dashed") +
+  scale_y_continuous(limits = c(0, 6000),
+                     sec.axis = sec_axis( ~ . * 7 / 6000,
+                                          name = "Resources")) +
+  labs(x = "Time (Years)", y = "Population number (Ni)") +
+  theme_classic()+ theme(legend.position="bottom")
+  
+```
+
+```{r fig.height=5, fig.width=10}
+pcgrowth_vs_resource + succession_plot_resource
+ggsave(
+  "figures/fig1.png",
+  width = 10,
+  height = 5,
+  units = "in"
+)
+```
+
+
+
