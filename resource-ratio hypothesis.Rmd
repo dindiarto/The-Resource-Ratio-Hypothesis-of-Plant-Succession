@@ -117,26 +117,33 @@ t <- seq(0,100, by = (1/10)) # advance a small time step
 ```{r warning = FALSE}
 simulate_succession <- function(t, pop, params) {
   with(as.list(c(pop, params)), {
+    
     R = Rmax - (u1*N1) - (u2*N2) - (u3*N3) - (u4*N4) - (u5*N5) # compute remaining resources
     
-    dN1 = m1 * (R - R1star) * N1 # estimate the change in the population of each species
     
-    dN2 = m2 * (R - R2star) * N2
+    # Compute percapita growth for each species
+    r1 = percapita_growth(m = m1, R = R,  Rstar = R1star)
+    r2 = percapita_growth(m = m2, R = R,  Rstar = R2star)
+    r3 = percapita_growth(m = m3, R = R,  Rstar = R3star) 
+    r4 = percapita_growth(m = m4, R = R,  Rstar = R4star) 
+    r5 = percapita_growth(m = m5, R = R,  Rstar = R5star)
     
-    dN3 = m3 * (R - R3star) * N3
     
-    dN4 = m4 * (R - R4star) * N4
+    # Estimate the change in the population of each species
+    dN1 = r1 * N1 
+    dN2 = r2 * N2
+    dN3 = r3 * N3
+    dN4 = r4 * N4
+    dN5 = r5 * N5
     
-    dN5 = m5 * (R - R5star) * N5
-    
-   # cat("Time = ", t, "R = ", R, "\n")
-    return(list(c(dN1, dN2, dN3, dN4, dN5), # population number
-                R = R, 
-                pcg1 = dN1/N1,  # percapita growth rate
-                pcg2 = dN2/N2,
-                pcg3 = dN3/N3,
-                pcg4 = dN4/N4,
-                pcg5 = dN5/N5))
+    return(list(
+                c(dN1, dN2, dN3, dN4, dN5),
+                r1 = r1,
+                r2 = r2,
+                r3 = r3,
+                r4 = r4,
+                r5 = r5,
+                R = R))
   
   })
 }
@@ -165,7 +172,7 @@ succession_solution <-
 
 # select per-capita growth rate
 sucession_solution_long_percapita <- succession_solution %>%
-  select(R, pcg1, pcg2, pcg3, pcg4, pcg5) %>%
+  select(R, r1, r2, r3, r4, r5) %>%
   gather("pop", "rate",-R)
 
 # create a 'percapita growth rate vs resource level' plot
@@ -184,7 +191,7 @@ pcgrowth_vs_resource <-
 ```{r warning = FALSE}
 # Number of population across time
 sucession_solution_long <- succession_solution %>%
-  select(!c(pcg1, pcg2, pcg3, pcg4, pcg5)) %>%
+  select(!c(r1, r2, r3, r4, r5)) %>%
   gather("pop", "number",-time)
 
 succession_plot <- sucession_solution_long %>%
@@ -213,7 +220,8 @@ ggsave(
   "figures/fig1.png",
   width = 10,
   height = 5,
-  units = "in"
+  units = "in",
+  dpi=72
 )
 ```
 
